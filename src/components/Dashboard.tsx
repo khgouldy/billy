@@ -1,40 +1,57 @@
 import { useEffect, useRef, useState } from 'react';
 import * as vg from '@uwdata/vgplot';
+import { coordinator } from '@uwdata/mosaic-core';
 import type { DashboardSpec, ChartSpec } from '../types';
 import { SummaryStats } from './SummaryStats';
 
 interface DashboardProps {
   spec: DashboardSpec;
+  tableName: string;
 }
 
-function ChartCard({ chart, crossFilter }: { chart: ChartSpec; crossFilter: any }) {
+function ChartCard({ chart, tableName, crossFilter }: { chart: ChartSpec; tableName: string; crossFilter: any }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showSQL, setShowSQL] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
+    let cancelled = false;
 
     while (containerRef.current.firstChild) {
       containerRef.current.removeChild(containerRef.current.firstChild);
     }
     setError(null);
 
-    try {
-      const plotElement = buildPlot(chart, crossFilter);
-      containerRef.current.appendChild(plotElement);
-    } catch (e) {
-      setError(String(e instanceof Error ? e.message : e));
-    }
+    (async () => {
+      try {
+        // Create a temp view from the chart's SQL so Mosaic can query it
+        const viewName = `_benchcoach_${chart.id}`;
+        await coordinator().query(
+          `CREATE OR REPLACE TEMP VIEW "${viewName}" AS ${chart.sql}`,
+          { type: 'exec' }
+        );
+
+        if (cancelled) return;
+
+        const plotElement = buildPlot(chart, viewName, crossFilter);
+        containerRef.current?.appendChild(plotElement);
+      } catch (e) {
+        if (!cancelled) {
+          setError(String(e instanceof Error ? e.message : e));
+        }
+      }
+    })();
 
     return () => {
+      cancelled = true;
       if (containerRef.current) {
         while (containerRef.current.firstChild) {
           containerRef.current.removeChild(containerRef.current.firstChild);
         }
       }
     };
-  }, [chart, crossFilter]);
+  }, [chart, tableName, crossFilter]);
 
   return (
     <div className="chart-card bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
@@ -75,8 +92,8 @@ function ChartCard({ chart, crossFilter }: { chart: ChartSpec; crossFilter: any 
   );
 }
 
-function buildPlot(chart: ChartSpec, crossFilter: any): HTMLElement {
-  const source = vg.from(chart.sql, { filterBy: crossFilter });
+function buildPlot(chart: ChartSpec, viewName: string, crossFilter: any): HTMLElement {
+  const source = vg.from(viewName, { filterBy: crossFilter });
 
   let mark: any;
   let interactor: any;
@@ -103,10 +120,7 @@ function buildPlot(chart: ChartSpec, crossFilter: any): HTMLElement {
       interactor = vg.intervalXY({ as: crossFilter });
       break;
     case 'histogram':
-      mark = vg.rectY(
-        vg.from(chart.sql, { filterBy: crossFilter }),
-        { x: vg.bin(chart.xColumn), y: vg.count(), fill: 'steelblue', tip: true }
-      );
+      mark = vg.rectY(source, { x: vg.bin(chart.xColumn), y: vg.count(), fill: 'steelblue', tip: true });
       interactor = vg.intervalX({ as: crossFilter });
       break;
     case 'heatmap':
@@ -131,7 +145,7 @@ function buildPlot(chart: ChartSpec, crossFilter: any): HTMLElement {
   return vg.plot(...plotArgs);
 }
 
-export function Dashboard({ spec }: DashboardProps) {
+export function Dashboard({ spec, tableName }: DashboardProps) {
   const crossFilterRef = useRef<any>(null);
   if (!crossFilterRef.current) {
     crossFilterRef.current = vg.Selection.crossfilter();
@@ -155,6 +169,7 @@ export function Dashboard({ spec }: DashboardProps) {
           <ChartCard
             key={chart.id}
             chart={chart}
+            tableName={tableName}
             crossFilter={crossFilterRef.current}
           />
         ))}

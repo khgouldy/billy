@@ -225,7 +225,7 @@ export default function App() {
               </div>
             </div>
           ) : state.dashboard ? (
-            <Dashboard spec={state.dashboard} />
+            <Dashboard spec={state.dashboard} tableName={state.schema!.tableName} />
           ) : (
             <div className="flex-1 flex flex-col">
               <div className="flex-1 flex items-center justify-center">
