@@ -3,6 +3,7 @@ import { useAppState } from './hooks/useAppState';
 import { useSettings } from './hooks/useSettings';
 import { ingestFile, ingestURL, detectDataQualityIssues } from './services/duckdb';
 import { AnthropicProvider } from './services/llm/anthropic';
+import { OpenAIProvider } from './services/llm/openai';
 import { setLLMProvider, getLLMProvider } from './services/llm/provider';
 import type { ChatMessage } from './types';
 import { Landing } from './components/Landing';
@@ -22,12 +23,16 @@ export default function App() {
   const { state, actions } = useAppState();
   const { settings, updateSettings } = useSettings();
 
-  // Initialize LLM provider when API key changes
+  // Initialize LLM provider when settings change
   useEffect(() => {
     if (settings.apiKey) {
-      setLLMProvider(new AnthropicProvider(settings.apiKey, settings.model));
+      if (settings.llmProvider === 'openai') {
+        setLLMProvider(new OpenAIProvider(settings.apiKey, settings.model));
+      } else {
+        setLLMProvider(new AnthropicProvider(settings.apiKey, settings.model));
+      }
     }
-  }, [settings.apiKey, settings.model]);
+  }, [settings.apiKey, settings.model, settings.llmProvider]);
 
   // Keyboard shortcuts
   useEffect(() => {

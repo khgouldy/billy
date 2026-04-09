@@ -6,7 +6,27 @@ interface SettingsProps {
   onClose: () => void;
 }
 
+const MODELS: Record<string, { label: string; value: string }[]> = {
+  anthropic: [
+    { label: 'Claude Sonnet 4', value: 'claude-sonnet-4-20250514' },
+    { label: 'Claude Haiku 4.5', value: 'claude-haiku-4-5-20251001' },
+  ],
+  openai: [
+    { label: 'GPT-4o', value: 'gpt-4o' },
+    { label: 'GPT-4o Mini', value: 'gpt-4o-mini' },
+    { label: 'GPT-4.1', value: 'gpt-4.1' },
+    { label: 'GPT-4.1 Mini', value: 'gpt-4.1-mini' },
+  ],
+};
+
 export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
+  const handleProviderChange = (provider: string) => {
+    const defaultModel = MODELS[provider]?.[0]?.value || '';
+    onUpdate({ llmProvider: provider as AppSettings['llmProvider'], model: defaultModel });
+  };
+
+  const models = MODELS[settings.llmProvider] || [];
+
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
       <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-xl">
@@ -18,22 +38,39 @@ export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
         </div>
 
         <div className="p-4 space-y-5">
+          {/* Provider */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Anthropic API Key
+              LLM Provider
+            </label>
+            <select
+              value={settings.llmProvider}
+              onChange={e => handleProviderChange(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-300"
+            >
+              <option value="anthropic">Anthropic</option>
+              <option value="openai">OpenAI</option>
+            </select>
+          </div>
+
+          {/* API Key */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              {settings.llmProvider === 'openai' ? 'OpenAI' : 'Anthropic'} API Key
             </label>
             <input
               type="password"
               value={settings.apiKey}
               onChange={e => onUpdate({ apiKey: e.target.value })}
-              placeholder="sk-ant-..."
+              placeholder={settings.llmProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100"
             />
             <p className="text-xs text-slate-400 mt-1">
-              Stored in your browser's localStorage. Never sent anywhere except Anthropic's API.
+              Stored in your browser's localStorage. Never sent anywhere except the provider's API.
             </p>
           </div>
 
+          {/* Model */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Model</label>
             <select
@@ -41,11 +78,13 @@ export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
               onChange={e => onUpdate({ model: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-300"
             >
-              <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
-              <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+              {models.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
             </select>
           </div>
 
+          {/* Data Quality */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Data Quality Callouts
@@ -61,6 +100,7 @@ export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
             </select>
           </div>
 
+          {/* Domain Context */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Domain Context
