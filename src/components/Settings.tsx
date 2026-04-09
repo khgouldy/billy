@@ -17,6 +17,21 @@ const MODELS: Record<string, { label: string; value: string }[]> = {
     { label: 'GPT-4.1', value: 'gpt-4.1' },
     { label: 'GPT-4.1 Mini', value: 'gpt-4.1-mini' },
   ],
+  ollama: [
+    { label: 'Llama 3.1', value: 'llama3.1' },
+    { label: 'Llama 3.1 70B', value: 'llama3.1:70b' },
+    { label: 'Qwen 2.5 Coder', value: 'qwen2.5-coder' },
+    { label: 'Mistral', value: 'mistral' },
+    { label: 'DeepSeek Coder V2', value: 'deepseek-coder-v2' },
+    { label: 'Gemma 2', value: 'gemma2' },
+    { label: 'Command R+', value: 'command-r-plus' },
+  ],
+};
+
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  ollama: 'Ollama (Local)',
 };
 
 export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
@@ -26,11 +41,12 @@ export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
   };
 
   const models = MODELS[settings.llmProvider] || [];
+  const isOllama = settings.llmProvider === 'ollama';
 
   return (
     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-xl">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-slate-200 sticky top-0 bg-white rounded-t-xl">
           <h2 className="text-lg font-semibold text-slate-900">Settings</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">
             &times;
@@ -50,38 +66,86 @@ export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
             >
               <option value="anthropic">Anthropic</option>
               <option value="openai">OpenAI</option>
+              <option value="ollama">Ollama (Local)</option>
             </select>
+            {isOllama && (
+              <p className="text-xs text-emerald-600 mt-1">
+                Runs entirely on your machine. No data leaves your computer.
+              </p>
+            )}
           </div>
 
-          {/* API Key */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              {settings.llmProvider === 'openai' ? 'OpenAI' : 'Anthropic'} API Key
-            </label>
-            <input
-              type="password"
-              value={settings.apiKey}
-              onChange={e => onUpdate({ apiKey: e.target.value })}
-              placeholder={settings.llmProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100"
-            />
-            <p className="text-xs text-slate-400 mt-1">
-              Stored in your browser's localStorage. Never sent anywhere except the provider's API.
-            </p>
-          </div>
+          {/* API Key (not needed for Ollama) */}
+          {!isOllama && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                {PROVIDER_LABELS[settings.llmProvider]} API Key
+              </label>
+              <input
+                type="password"
+                value={settings.apiKey}
+                onChange={e => onUpdate({ apiKey: e.target.value })}
+                placeholder={settings.llmProvider === 'openai' ? 'sk-...' : 'sk-ant-...'}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Stored in your browser's localStorage. Never sent anywhere except the provider's API.
+              </p>
+            </div>
+          )}
+
+          {/* Ollama URL */}
+          {isOllama && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Ollama URL
+              </label>
+              <input
+                type="text"
+                value={settings.ollamaUrl}
+                onChange={e => onUpdate({ ollamaUrl: e.target.value })}
+                placeholder="http://localhost:11434"
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-100 font-mono"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Default: http://localhost:11434. Make sure Ollama is running.
+              </p>
+            </div>
+          )}
 
           {/* Model */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Model</label>
-            <select
-              value={settings.model}
-              onChange={e => onUpdate({ model: e.target.value })}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-300"
-            >
-              {models.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
+            {isOllama ? (
+              <div>
+                <input
+                  type="text"
+                  value={settings.model}
+                  onChange={e => onUpdate({ model: e.target.value })}
+                  placeholder="llama3.1"
+                  list="ollama-models"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-300 font-mono"
+                />
+                <datalist id="ollama-models">
+                  {models.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </datalist>
+                <p className="text-xs text-slate-400 mt-1">
+                  Type any model name you have pulled, or pick from the suggestions.
+                </p>
+              </div>
+            ) : (
+              <select
+                value={settings.model}
+                onChange={e => onUpdate({ model: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-300"
+              >
+                {models.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Data Quality */}
@@ -109,7 +173,7 @@ export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
               value={settings.domainContext}
               onChange={e => onUpdate({ domainContext: e.target.value })}
               placeholder='e.g., "Revenue excludes refunds. Fill rate = filled / headcount. Rating scale is 1-5."'
-              rows={4}
+              rows={3}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder-slate-400 resize-none focus:outline-none focus:border-blue-300"
             />
             <p className="text-xs text-slate-400 mt-1">
@@ -118,7 +182,7 @@ export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-200 flex justify-end">
+        <div className="p-4 border-t border-slate-200 flex justify-end sticky bottom-0 bg-white rounded-b-xl">
           <button
             onClick={onClose}
             className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-500"

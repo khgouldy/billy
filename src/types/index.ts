@@ -138,9 +138,10 @@ export type AppAction =
 // ─── Settings ──────────────────────────────────────────────────
 
 export interface AppSettings {
-  llmProvider: 'anthropic' | 'openai';
+  llmProvider: 'anthropic' | 'openai' | 'ollama';
   apiKey: string;
   model: string;
+  ollamaUrl: string;
   dataQualityLevel: 'off' | 'subtle' | 'verbose';
   domainContext: string;
 }

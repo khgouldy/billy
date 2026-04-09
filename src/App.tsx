@@ -4,6 +4,7 @@ import { useSettings } from './hooks/useSettings';
 import { ingestFile, ingestURL, detectDataQualityIssues } from './services/duckdb';
 import { AnthropicProvider } from './services/llm/anthropic';
 import { OpenAIProvider } from './services/llm/openai';
+import { OllamaProvider } from './services/llm/ollama';
 import { setLLMProvider, getLLMProvider } from './services/llm/provider';
 import type { ChatMessage } from './types';
 import { Landing } from './components/Landing';
@@ -25,14 +26,16 @@ export default function App() {
 
   // Initialize LLM provider when settings change
   useEffect(() => {
-    if (settings.apiKey) {
+    if (settings.llmProvider === 'ollama') {
+      setLLMProvider(new OllamaProvider(settings.model, settings.ollamaUrl));
+    } else if (settings.apiKey) {
       if (settings.llmProvider === 'openai') {
         setLLMProvider(new OpenAIProvider(settings.apiKey, settings.model));
       } else {
         setLLMProvider(new AnthropicProvider(settings.apiKey, settings.model));
       }
     }
-  }, [settings.apiKey, settings.model, settings.llmProvider]);
+  }, [settings.apiKey, settings.model, settings.llmProvider, settings.ollamaUrl]);
 
   // Keyboard shortcuts
   useEffect(() => {
