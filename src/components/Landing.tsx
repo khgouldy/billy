@@ -60,8 +60,11 @@ export function Landing({ onFileSelect, onSampleData }: LandingProps) {
   }, [onFileSelect]);
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8">
-      <div className="max-w-2xl w-full space-y-8">
+    <div className="flex-1 flex items-center justify-center p-8 relative">
+      {/* Animated gradient mesh background */}
+      <div className="hero-mesh"><div className="mesh-blob" /></div>
+
+      <div className="max-w-2xl w-full space-y-8 relative z-10">
         {/* Header */}
         <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold text-slate-900 tracking-tight">

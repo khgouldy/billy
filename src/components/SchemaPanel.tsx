@@ -1,4 +1,8 @@
+import { useEffect, useState } from 'react';
 import type { TableSchema, DataQualityIssue } from '../types';
+import { computeSparkline, isNumericType } from '../services/duckdb';
+import type { SparklineData } from '../services/duckdb';
+import { Sparkline } from './Sparkline';
 
 interface SchemaPanelProps {
   schema: TableSchema;
@@ -18,6 +22,15 @@ function typeColor(type: string): string {
   return 'text-slate-500';
 }
 
+function sparklineColor(type: string): string {
+  const t = type.toUpperCase();
+  if (t.includes('INT') || t.includes('FLOAT') || t.includes('DOUBLE') || t.includes('DECIMAL'))
+    return '#059669';
+  if (t.includes('DATE') || t.includes('TIME') || t.includes('TIMESTAMP'))
+    return '#3b82f6';
+  return '#d97706';
+}
+
 function formatCardinality(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
@@ -25,6 +38,30 @@ function formatCardinality(n: number): string {
 }
 
 export function SchemaPanel({ schema, dataQualityIssues }: SchemaPanelProps) {
+  const [sparklines, setSparklines] = useState<Record<string, SparklineData>>({});
+
+  // Load sparklines for all columns in parallel
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSparklines() {
+      const results: Record<string, SparklineData> = {};
+      const promises = schema.columns.map(async (col) => {
+        try {
+          const data = await computeSparkline(schema.tableName, col.name, col.type);
+          results[col.name] = data;
+        } catch {
+          // Sparkline is non-critical, skip on error
+        }
+      });
+      await Promise.all(promises);
+      if (!cancelled) setSparklines(results);
+    }
+
+    loadSparklines();
+    return () => { cancelled = true; };
+  }, [schema]);
+
   const issuesByColumn = new Map<string, DataQualityIssue[]>();
   for (const issue of dataQualityIssues) {
     const arr = issuesByColumn.get(issue.column) || [];
@@ -44,35 +81,48 @@ export function SchemaPanel({ schema, dataQualityIssues }: SchemaPanelProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
-        {schema.columns.map(col => {
+      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        {schema.columns.map((col, i) => {
           const issues = issuesByColumn.get(col.name) || [];
+          const spark = sparklines[col.name];
           return (
-            <div key={col.name} className="p-2 rounded hover:bg-slate-50 group">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-slate-700 font-mono truncate" title={col.name}>
+            <div
+              key={col.name}
+              className="p-2 rounded hover:bg-slate-50 group card-entrance"
+              style={{ animationDelay: `${i * 30}ms` }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm text-slate-700 font-mono truncate flex-1" title={col.name}>
                   {col.name}
                 </span>
-                <span className={`text-xs font-mono ${typeColor(col.type)}`}>
+                <span className={`text-xs font-mono flex-shrink-0 ${typeColor(col.type)}`}>
                   {col.type}
                 </span>
               </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-slate-400">
-                <span>{formatCardinality(col.distinctCount)} distinct</span>
-                {col.nullPercent > 0 && (
-                  <span className={col.nullPercent > 20 ? 'text-amber-600' : ''}>
-                    {col.nullPercent}% null
-                  </span>
+
+              {/* Sparkline + stats row */}
+              <div className="flex items-center gap-2 mt-1.5">
+                {spark && spark.length > 0 && (
+                  <Sparkline data={spark} color={sparklineColor(col.type)} />
                 )}
+                <div className="flex items-center gap-2 text-xs text-slate-400 min-w-0">
+                  <span>{formatCardinality(col.distinctCount)} distinct</span>
+                  {col.nullPercent > 0 && (
+                    <span className={col.nullPercent > 20 ? 'text-amber-600' : ''}>
+                      {col.nullPercent}% null
+                    </span>
+                  )}
+                </div>
               </div>
+
               {col.min !== null && col.min !== undefined && (
                 <div className="text-xs text-slate-300 mt-0.5 truncate">
                   {String(col.min)} — {String(col.max)}
                 </div>
               )}
-              {issues.map((issue, i) => (
+              {issues.map((issue, j) => (
                 <div
-                  key={i}
+                  key={j}
                   className={`text-xs mt-1 px-1.5 py-0.5 rounded inline-block
                     ${issue.severity === 'warning'
                       ? 'bg-amber-50 text-amber-700 border border-amber-200'

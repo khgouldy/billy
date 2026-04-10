@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useAppState } from './hooks/useAppState';
 import { useSettings } from './hooks/useSettings';
 import { ingestFile, ingestURL, detectDataQualityIssues } from './services/duckdb';
@@ -7,6 +7,7 @@ import { OpenAIProvider } from './services/llm/openai';
 import { OllamaProvider } from './services/llm/ollama';
 import { setLLMProvider, getLLMProvider, withSelfCorrection } from './services/llm/provider';
 import type { ChatMessage } from './types';
+import type { PaletteAction } from './components/CommandPalette';
 import { Landing } from './components/Landing';
 import { Header } from './components/Header';
 import { SchemaPanel } from './components/SchemaPanel';
@@ -15,6 +16,8 @@ import { Dashboard } from './components/Dashboard';
 import { ChatPanel } from './components/ChatPanel';
 import { SqlPanel } from './components/SqlPanel';
 import { Settings } from './components/Settings';
+import { DashboardSkeleton } from './components/DashboardSkeleton';
+import { CommandPalette } from './components/CommandPalette';
 
 function generateId(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -23,6 +26,7 @@ function generateId(): string {
 export default function App() {
   const { state, actions } = useAppState();
   const { settings, updateSettings, saveError } = useSettings();
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Initialize LLM provider when settings change
   useEffect(() => {
@@ -43,6 +47,10 @@ export default function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === 's' && state.schema) {
         e.preventDefault();
         actions.toggleSqlPanel();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setPaletteOpen(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -175,12 +183,51 @@ export default function App() {
     }
   }, [state.dashboard, state.schema, state.messages, actions, settings]);
 
+  // Build command palette actions
+  const paletteActions = useMemo<PaletteAction[]>(() => {
+    const cmds: PaletteAction[] = [
+      { id: 'settings', label: 'Open Settings', section: 'General', onSelect: () => actions.toggleSettings() },
+    ];
+
+    if (state.schema) {
+      cmds.push(
+        { id: 'sql', label: 'Toggle SQL Panel', section: 'General', shortcut: '\u2318S', onSelect: () => actions.toggleSqlPanel() },
+        { id: 'reset', label: 'Reset / Load New File', section: 'General', onSelect: () => actions.reset() },
+      );
+
+      if (!state.dashboard && !state.isGenerating) {
+        cmds.push({
+          id: 'generate',
+          label: 'Generate Dashboard',
+          section: 'Dashboard',
+          onSelect: () => { if (state.schema) generateDashboard(state.schema); },
+        });
+      }
+
+      for (const col of state.schema.columns) {
+        cmds.push({
+          id: `col-${col.name}`,
+          label: `${col.name} (${col.type})`,
+          section: 'Columns',
+          onSelect: () => {
+            if (!state.sqlPanelOpen) actions.toggleSqlPanel();
+          },
+        });
+      }
+    }
+
+    return cmds;
+  }, [state.schema, state.dashboard, state.isGenerating, state.sqlPanelOpen, actions, generateDashboard]);
+
   // Landing phase
   if (state.phase === 'landing') {
     return (
       <div className="h-screen flex flex-col">
         <Header hasData={false} onSettings={() => actions.toggleSettings()} onReset={() => actions.reset()} />
         <Landing onFileSelect={handleFileSelect} onSampleData={handleSampleData} />
+        {paletteOpen && (
+          <CommandPalette actions={paletteActions} onClose={() => setPaletteOpen(false)} />
+        )}
         {state.settingsOpen && (
           <Settings settings={settings} onUpdate={updateSettings} onClose={() => actions.toggleSettings()} saveError={saveError} />
         )}
@@ -225,13 +272,7 @@ export default function App() {
         {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {state.isGenerating && !state.dashboard ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center space-y-3">
-                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-slate-500">Generating dashboard...</p>
-                <p className="text-slate-400 text-sm">The AI is analyzing your data and building charts</p>
-              </div>
-            </div>
+            <DashboardSkeleton />
           ) : state.dashboard ? (
             <Dashboard spec={state.dashboard} tableName={state.schema!.tableName} />
           ) : (
@@ -264,6 +305,9 @@ export default function App() {
         )}
       </div>
 
+      {paletteOpen && (
+        <CommandPalette actions={paletteActions} onClose={() => setPaletteOpen(false)} />
+      )}
       {state.settingsOpen && (
         <Settings settings={settings} onUpdate={updateSettings} onClose={() => actions.toggleSettings()} saveError={saveError} />
       )}

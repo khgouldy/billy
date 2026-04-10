@@ -270,3 +270,97 @@ function isNumericType(type: string): boolean {
 export function getPreviewQuery(tableName: string, limit = 100): string {
   return `SELECT * FROM "${tableName}" LIMIT ${limit}`;
 }
+
+export { isNumericType };
+
+function isDateType(type: string): boolean {
+  const t = type.toUpperCase();
+  return t.includes('DATE') || t.includes('TIME') || t.includes('TIMESTAMP');
+}
+
+export type SparklineData = { label: string; value: number }[];
+
+/**
+ * Compute sparkline distribution data for a column.
+ * Returns an array of { label, value } pairs suitable for a mini bar chart.
+ */
+export async function computeSparkline(
+  tableName: string,
+  colName: string,
+  colType: string,
+): Promise<SparklineData> {
+  const escaped = colName.replace(/"/g, '""');
+
+  if (isNumericType(colType)) {
+    // Histogram: 10 equal-width bins
+    const result = await executeQuery(`
+      WITH bounds AS (
+        SELECT MIN("${escaped}") AS lo, MAX("${escaped}") AS hi
+        FROM "${tableName}"
+        WHERE "${escaped}" IS NOT NULL
+      ),
+      binned AS (
+        SELECT
+          CASE WHEN hi = lo THEN 0
+               ELSE LEAST(FLOOR(("${escaped}" - lo) / NULLIF((hi - lo), 0) * 10), 9)
+          END::INT AS bin
+        FROM "${tableName}", bounds
+        WHERE "${escaped}" IS NOT NULL
+      )
+      SELECT bin AS label, COUNT(*)::INT AS value
+      FROM binned
+      GROUP BY bin
+      ORDER BY bin
+    `);
+    // Fill in any missing bins
+    const bins = new Map<number, number>();
+    for (const row of result.rows) bins.set(Number(row.label), Number(row.value));
+    return Array.from({ length: 10 }, (_, i) => ({
+      label: String(i),
+      value: bins.get(i) || 0,
+    }));
+  }
+
+  if (isDateType(colType)) {
+    // Timeline: 10 time buckets
+    const result = await executeQuery(`
+      WITH bounds AS (
+        SELECT MIN("${escaped}") AS lo, MAX("${escaped}") AS hi
+        FROM "${tableName}"
+        WHERE "${escaped}" IS NOT NULL
+      ),
+      binned AS (
+        SELECT
+          CASE WHEN hi = lo THEN 0
+               ELSE LEAST(FLOOR(EPOCH("${escaped}" - lo) / NULLIF(EPOCH(hi - lo), 0) * 10), 9)
+          END::INT AS bin
+        FROM "${tableName}", bounds
+        WHERE "${escaped}" IS NOT NULL
+      )
+      SELECT bin AS label, COUNT(*)::INT AS value
+      FROM binned
+      GROUP BY bin
+      ORDER BY bin
+    `);
+    const bins = new Map<number, number>();
+    for (const row of result.rows) bins.set(Number(row.label), Number(row.value));
+    return Array.from({ length: 10 }, (_, i) => ({
+      label: String(i),
+      value: bins.get(i) || 0,
+    }));
+  }
+
+  // Categorical: top 5 values by frequency
+  const result = await executeQuery(`
+    SELECT "${escaped}"::VARCHAR AS label, COUNT(*)::INT AS value
+    FROM "${tableName}"
+    WHERE "${escaped}" IS NOT NULL
+    GROUP BY "${escaped}"
+    ORDER BY value DESC
+    LIMIT 5
+  `);
+  return result.rows.map(r => ({
+    label: String(r.label),
+    value: Number(r.value),
+  }));
+}

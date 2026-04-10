@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ChatMessage } from '../types';
+import { SqlHighlight } from './SqlHighlight';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -72,8 +73,8 @@ export function ChatPanel({ messages, onSend, isGenerating }: ChatPanelProps) {
                   <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600">
                     View SQL
                   </summary>
-                  <pre className="mt-1 p-2 bg-slate-100 rounded text-xs text-slate-600 overflow-x-auto font-mono">
-                    {msg.sql}
+                  <pre className="mt-1 p-2 bg-slate-100 rounded text-xs overflow-x-auto">
+                    <SqlHighlight sql={msg.sql} />
                   </pre>
                 </details>
               )}
