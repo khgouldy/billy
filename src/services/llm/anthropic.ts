@@ -1,5 +1,6 @@
 import type {
   LLMProvider,
+  RawCompletionProvider,
   DashboardSpec,
   TableSchema,
   ChatMessage,
@@ -11,7 +12,7 @@ import {
   validateDashboardSpec,
 } from './prompts';
 
-export class AnthropicProvider implements LLMProvider {
+export class AnthropicProvider implements LLMProvider, RawCompletionProvider {
   name = 'anthropic';
   private apiKey: string;
   private model: string;
@@ -62,6 +63,43 @@ export class AnthropicProvider implements LLMProvider {
       followUps: Array.isArray(result.followUps) ? result.followUps.map(String) : [],
       educationalNote: result.educationalNote ? String(result.educationalNote) : undefined,
     };
+  }
+
+  async generateRawCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        throw new Error('Invalid API key. Please check your Anthropic API key in settings.');
+      }
+      throw new Error(
+        `Anthropic API error: ${(error as Record<string, unknown>).error?.toString() || response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+    const content = data.content?.[0]?.text;
+    if (!content) {
+      throw new Error('Empty response from Anthropic API');
+    }
+    return content;
   }
 
   private async callAPI(prompt: string): Promise<string> {

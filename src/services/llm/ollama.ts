@@ -1,5 +1,6 @@
 import type {
   LLMProvider,
+  RawCompletionProvider,
   DashboardSpec,
   TableSchema,
   ChatMessage,
@@ -11,7 +12,7 @@ import {
   validateDashboardSpec,
 } from './prompts';
 
-export class OllamaProvider implements LLMProvider {
+export class OllamaProvider implements LLMProvider, RawCompletionProvider {
   name = 'ollama';
   private baseUrl: string;
   private model: string;
@@ -62,6 +63,36 @@ export class OllamaProvider implements LLMProvider {
       followUps: Array.isArray(result.followUps) ? result.followUps.map(String) : [],
       educationalNote: result.educationalNote ? String(result.educationalNote) : undefined,
     };
+  }
+
+  async generateRawCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 0 || response.type === 'opaque') {
+        throw new Error('Cannot reach Ollama. Make sure it is running at ' + this.baseUrl);
+      }
+      const error = await response.text().catch(() => '');
+      throw new Error(`Ollama error: ${error || response.statusText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('Empty response from Ollama');
+    }
+    return content;
   }
 
   private async callAPI(prompt: string): Promise<string> {

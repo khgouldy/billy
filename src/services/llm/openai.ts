@@ -1,5 +1,6 @@
 import type {
   LLMProvider,
+  RawCompletionProvider,
   DashboardSpec,
   TableSchema,
   ChatMessage,
@@ -11,7 +12,7 @@ import {
   validateDashboardSpec,
 } from './prompts';
 
-export class OpenAIProvider implements LLMProvider {
+export class OpenAIProvider implements LLMProvider, RawCompletionProvider {
   name = 'openai';
   private apiKey: string;
   private model: string;
@@ -62,6 +63,40 @@ export class OpenAIProvider implements LLMProvider {
       followUps: Array.isArray(result.followUps) ? result.followUps.map(String) : [],
       educationalNote: result.educationalNote ? String(result.educationalNote) : undefined,
     };
+  }
+
+  async generateRawCompletion(systemPrompt: string, userPrompt: string): Promise<string> {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        throw new Error('Invalid API key. Please check your OpenAI API key in settings.');
+      }
+      throw new Error(
+        `OpenAI API error: ${(error as Record<string, unknown>).error?.toString() || response.statusText}`
+      );
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('Empty response from OpenAI API');
+    }
+    return content;
   }
 
   private async callAPI(prompt: string): Promise<string> {
