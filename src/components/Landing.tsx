@@ -7,11 +7,11 @@ interface LandingProps {
 
 const SAMPLE_DATASETS = [
   {
-    id: 'meteorites',
-    name: 'NASA Meteorite Landings',
-    description: '45,716 meteorites catalogued by NASA with location, mass, and mineral classification',
-    rows: '~45k rows',
-    icon: '\u2604\uFE0F',
+    id: 'movies',
+    name: 'Hollywood Movies',
+    description: 'Box office records with budgets, ratings, genres, and worldwide gross revenue',
+    rows: '~3.2k rows',
+    icon: '\uD83C\uDFAC',
   },
   {
     id: 'earthquakes',
@@ -21,11 +21,11 @@ const SAMPLE_DATASETS = [
     icon: '\uD83C\uDF0D',
   },
   {
-    id: 'near_earth',
-    name: 'Near-Earth Objects',
-    description: 'NASA asteroid and comet observations with orbital parameters and hazard classification',
-    rows: '~10k rows',
-    icon: '\u2B50',
+    id: 'flights',
+    name: 'US Flight Delays',
+    description: 'Domestic flight records with delay times, distances, and airport codes',
+    rows: '~5k rows',
+    icon: '\u2708\uFE0F',
   },
 ];
 

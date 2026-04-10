@@ -104,9 +104,9 @@ export default function App() {
 
     try {
       const datasetConfig: Record<string, { url: string; table: string; type: 'csv' | 'json' | 'parquet' }> = {
-        meteorites: {
-          url: 'https://data.nasa.gov/resource/gh4g-9sfh.json?$limit=5000',
-          table: 'meteorites',
+        movies: {
+          url: 'https://raw.githubusercontent.com/vega/vega-datasets/main/data/movies.json',
+          table: 'movies',
           type: 'json',
         },
         earthquakes: {
@@ -114,9 +114,9 @@ export default function App() {
           table: 'earthquakes',
           type: 'csv',
         },
-        near_earth: {
-          url: 'https://raw.githubusercontent.com/vega/vega-datasets/main/data/gapminder.json',
-          table: 'gapminder',
+        flights: {
+          url: 'https://raw.githubusercontent.com/vega/vega-datasets/main/data/flights-5k.json',
+          table: 'flights',
           type: 'json',
         },
       };

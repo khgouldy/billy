@@ -2,15 +2,33 @@ import { coordinator, DuckDBWASMConnector } from '@uwdata/mosaic-core';
 import { loadCSV, loadJSON, loadParquet } from '@uwdata/mosaic-sql';
 import type { ColumnInfo, TableSchema, DataQualityIssue } from '../types';
 
+/** Enable debug logging with: localStorage.setItem('billy_debug', 'true') in browser console */
+function isDebug(): boolean {
+  try { return localStorage.getItem('billy_debug') === 'true'; } catch { return false; }
+}
+
+function debug(msg: string, ...args: unknown[]): void {
+  if (isDebug()) console.log(`%c[Billy] ${msg}`, 'color: #6366f1; font-weight: bold', ...args);
+}
+
+function debugTime(label: string): () => void {
+  if (!isDebug()) return () => {};
+  const start = performance.now();
+  debug(`⏱ ${label} — started`);
+  return () => debug(`⏱ ${label} — ${Math.round(performance.now() - start)}ms`);
+}
+
 let initialized = false;
 let wasm: DuckDBWASMConnector | null = null;
 
 export async function initDuckDB(): Promise<void> {
-  if (initialized) return;
+  if (initialized) { debug('DuckDB already initialized'); return; }
 
+  const done = debugTime('initDuckDB');
   wasm = new DuckDBWASMConnector();
   coordinator().databaseConnector(wasm);
   initialized = true;
+  done();
 }
 
 /** Run SQL through the Mosaic coordinator and get back row objects. */
@@ -21,12 +39,14 @@ export async function executeQuery(sql: string): Promise<{
   executionTime: number;
 }> {
   await initDuckDB();
+  debug('executeQuery:', sql.slice(0, 120) + (sql.length > 120 ? '…' : ''));
   const start = performance.now();
   const result = await coordinator().query(sql, { type: 'json' });
   const executionTime = Math.round(performance.now() - start);
 
   const rows = Array.isArray(result) ? result : [];
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+  debug(`executeQuery result: ${rows.length} rows, ${executionTime}ms`);
 
   return { columns, rows, rowCount: rows.length, executionTime };
 }
@@ -54,6 +74,7 @@ function detectFileType(fileName: string): 'csv' | 'tsv' | 'json' | 'parquet' {
 }
 
 export async function ingestFile(file: File): Promise<TableSchema> {
+  debug(`ingestFile: ${file.name} (${file.size} bytes)`);
   await initDuckDB();
 
   const tableName = sanitizeTableName(file.name);
@@ -99,17 +120,33 @@ export async function ingestURL(
 ): Promise<TableSchema> {
   await initDuckDB();
 
-  // Fetch the data and register as a file buffer, then load
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+  // Fetch the data with a timeout to avoid eternal spinners
+  let fetchDone = debugTime(`fetch ${url}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } catch (e) {
+    clearTimeout(timeout);
+    throw new Error(`Network error fetching ${url}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  clearTimeout(timeout);
+  if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
   const buffer = new Uint8Array(await response.arrayBuffer());
+  fetchDone();
+  debug(`Fetched ${buffer.byteLength} bytes for ${tableName}`);
 
   // Get the DuckDB instance from the connector and register the file
+  const regDone = debugTime('registerFileBuffer');
   const db = await wasm!.getDuckDB();
   const fileName = `${tableName}.${fileType}`;
   if (db && typeof db.registerFileBuffer === 'function') {
     await db.registerFileBuffer(fileName, buffer);
+  } else {
+    console.warn('[Billy] registerFileBuffer not available — DuckDB may fail to load the file');
   }
+  regDone();
 
   let loadStmt: any;
   switch (fileType) {
@@ -126,9 +163,14 @@ export async function ingestURL(
   }
 
   const loadSQL = String(loadStmt);
+  const loadDone = debugTime(`load SQL: ${loadSQL.slice(0, 80)}`);
   await runExec(loadSQL);
+  loadDone();
 
-  return computeSchema(tableName, `${tableName}.${fileType}`);
+  const schemaDone = debugTime('computeSchema');
+  const schema = await computeSchema(tableName, `${tableName}.${fileType}`);
+  schemaDone();
+  return schema;
 }
 
 async function computeSchema(
