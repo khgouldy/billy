@@ -2,13 +2,6 @@
 
 **Drop a file. Get a dashboard. Powered by AI, running in your browser.**
 
-<!-- Replace with a GIF or screenshot showing the full flow:
-     1. Drag a CSV onto the landing page
-     2. AI generates a cross-filtered dashboard
-     3. Chat refinement adding a new chart
-     Recommended: 1200px wide, optimized GIF or MP4-to-GIF conversion -->
-![Billy demo](https://via.placeholder.com/1200x600?text=demo+gif+here)
-
 Billy is a browser-based analytics tool that turns flat data files into interactive, cross-filtered dashboards in seconds. Drag in a CSV, JSON, or Parquet file — an AI analyzes your schema and generates charts, summary statistics, and insights. Then refine the dashboard through conversation: ask for new charts, adjust existing ones, or explore your data with SQL.
 
 Your **raw data never leaves the browser**. A full DuckDB SQL engine runs locally via WebAssembly, handling all data processing on your machine. Only lightweight schema metadata (column names, types, and basic statistics) is sent to your chosen AI provider to generate the dashboard. For fully offline analytics, connect a local [Ollama](https://ollama.ai) instance — zero network traffic, period.
