@@ -9,6 +9,7 @@ import type {
   ChatMessage,
   PatchOp,
 } from '../../types';
+import { coordinator } from '@uwdata/mosaic-core';
 import {
   buildIntentPrompt,
   buildSQLFromIntentSystemPrompt,
@@ -125,8 +126,21 @@ export class ModelChain implements LLMProvider {
 
   private async generateSQL(systemPrompt: string, intent: string): Promise<string> {
     const userPrompt = buildSQLFromIntentUserPrompt(intent);
-    const raw = await this.sqlWriter.generateRawCompletion(systemPrompt, userPrompt);
-    return this.cleanSQL(raw);
+    let raw = await this.sqlWriter.generateRawCompletion(systemPrompt, userPrompt);
+    let sql = this.cleanSQL(raw);
+
+    // Internal retry: if the SQL writer produces invalid SQL, feed the error back once
+    try {
+      // Dry-run with LIMIT 0 to catch syntax errors without fetching data
+      await coordinator().query(`SELECT * FROM (${sql}) _validate LIMIT 0`, { type: 'exec' });
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      const retryPrompt = `${intent}\n\nYour previous SQL was invalid. Error: ${errMsg}\nFix the SQL and return ONLY the corrected query.`;
+      raw = await this.sqlWriter.generateRawCompletion(systemPrompt, retryPrompt);
+      sql = this.cleanSQL(raw);
+    }
+
+    return sql;
   }
 
   private cleanSQL(raw: string): string {
