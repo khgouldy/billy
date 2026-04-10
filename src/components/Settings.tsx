@@ -29,6 +29,12 @@ const MODELS: Record<string, { label: string; value: string }[]> = {
   ],
 };
 
+const SQL_MODELS = [
+  { label: 'DuckDB NSQL 7B', value: 'duckdb-nsql' },
+  { label: 'SQLCoder', value: 'sqlcoder' },
+  { label: 'Code Llama', value: 'codellama' },
+];
+
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
@@ -102,7 +108,7 @@ export function Settings({ settings, onUpdate, onClose, saveError }: SettingsPro
           )}
 
           {/* Ollama URL */}
-          {isOllama && (
+          {(isOllama || settings.sqlModel) && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Ollama URL
@@ -152,6 +158,36 @@ export function Settings({ settings, onUpdate, onClose, saveError }: SettingsPro
                   <option key={m.value} value={m.value}>{m.label}</option>
                 ))}
               </select>
+            )}
+          </div>
+
+          {/* SQL Model (optional — enables model chaining) */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              SQL Model <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={settings.sqlModel}
+              onChange={e => onUpdate({ sqlModel: e.target.value })}
+              placeholder="e.g., duckdb-nsql"
+              list="sql-models"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-300 font-mono"
+            />
+            <datalist id="sql-models">
+              {SQL_MODELS.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </datalist>
+            <p className="text-xs text-slate-400 mt-1">
+              {settings.sqlModel
+                ? 'Model chaining active: your main model designs charts, this model writes SQL.'
+                : 'Leave empty to use your main model for everything. Set to a local Ollama model (e.g., duckdb-nsql) to split reasoning from SQL generation.'}
+            </p>
+            {settings.sqlModel && !isOllama && (
+              <p className="text-xs text-amber-600 mt-1">
+                SQL model runs locally via Ollama at {settings.ollamaUrl}. Make sure Ollama is running.
+              </p>
             )}
           </div>
 

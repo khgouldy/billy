@@ -6,7 +6,8 @@ import { AnthropicProvider } from './services/llm/anthropic';
 import { OpenAIProvider } from './services/llm/openai';
 import { OllamaProvider } from './services/llm/ollama';
 import { setLLMProvider, getLLMProvider, withSelfCorrection } from './services/llm/provider';
-import type { ChatMessage } from './types';
+import { ModelChain } from './services/llm/chain';
+import type { ChatMessage, LLMProvider, RawCompletionProvider } from './types';
 import type { PaletteAction } from './components/CommandPalette';
 import { Landing } from './components/Landing';
 import { Header } from './components/Header';
@@ -30,16 +31,28 @@ export default function App() {
 
   // Initialize LLM provider when settings change
   useEffect(() => {
+    let baseProvider: (LLMProvider & RawCompletionProvider) | null = null;
+
     if (settings.llmProvider === 'ollama') {
-      setLLMProvider(withSelfCorrection(new OllamaProvider(settings.model, settings.ollamaUrl)));
+      baseProvider = new OllamaProvider(settings.model, settings.ollamaUrl);
     } else if (settings.apiKey) {
       if (settings.llmProvider === 'openai') {
-        setLLMProvider(withSelfCorrection(new OpenAIProvider(settings.apiKey, settings.model)));
+        baseProvider = new OpenAIProvider(settings.apiKey, settings.model);
       } else {
-        setLLMProvider(withSelfCorrection(new AnthropicProvider(settings.apiKey, settings.model)));
+        baseProvider = new AnthropicProvider(settings.apiKey, settings.model);
       }
     }
-  }, [settings.apiKey, settings.model, settings.llmProvider, settings.ollamaUrl]);
+
+    if (!baseProvider) return;
+
+    // If a dedicated SQL model is configured, use model chaining
+    if (settings.sqlModel) {
+      const sqlProvider = new OllamaProvider(settings.sqlModel, settings.ollamaUrl);
+      setLLMProvider(withSelfCorrection(new ModelChain(baseProvider, sqlProvider)));
+    } else {
+      setLLMProvider(withSelfCorrection(baseProvider));
+    }
+  }, [settings.apiKey, settings.model, settings.llmProvider, settings.ollamaUrl, settings.sqlModel]);
 
   // Keyboard shortcuts
   useEffect(() => {
