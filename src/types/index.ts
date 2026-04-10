@@ -50,6 +50,34 @@ export interface SummaryStat {
   format?: string;
 }
 
+/** Intermediate representation: what a chart should show, before SQL is written */
+export interface ChartIntent {
+  id: string;
+  type: ChartType;
+  title: string;
+  description: string;
+  /** Natural language description of the query, e.g. "total worldwide gross grouped by genre, top 10" */
+  intent: string;
+  xColumn: string;
+  yColumn: string;
+  colorColumn?: string;
+}
+
+/** Dashboard spec with intents instead of SQL — output of the reasoning stage */
+export interface DashboardIntent {
+  title: string;
+  description?: string;
+  charts: ChartIntent[];
+  summaryStats?: SummaryStatIntent[];
+}
+
+export interface SummaryStatIntent {
+  label: string;
+  /** Natural language description, e.g. "count of all rows" */
+  intent: string;
+  format?: string;
+}
+
 // ─── Patch Operations ──────────────────────────────────────────
 
 export type PatchOp =
@@ -99,6 +127,12 @@ export interface LLMProvider {
   }>;
 }
 
+/** Minimal interface for models that just do prompt → text completion */
+export interface RawCompletionProvider {
+  name: string;
+  generateRawCompletion(systemPrompt: string, userPrompt: string): Promise<string>;
+}
+
 // ─── App State ─────────────────────────────────────────────────
 
 export type AppPhase = 'landing' | 'loading' | 'exploring';
@@ -142,6 +176,8 @@ export interface AppSettings {
   apiKey: string;
   model: string;
   ollamaUrl: string;
+  /** Optional dedicated SQL model (e.g., 'duckdb-nsql'). When set, enables model chaining. */
+  sqlModel: string;
   dataQualityLevel: 'off' | 'subtle' | 'verbose';
   domainContext: string;
 }

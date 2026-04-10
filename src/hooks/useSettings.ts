@@ -8,6 +8,7 @@ const defaults: AppSettings = {
   apiKey: '',
   model: 'claude-sonnet-4-20250514',
   ollamaUrl: 'http://localhost:11434',
+  sqlModel: '',
   dataQualityLevel: 'subtle',
   domainContext: '',
 };
