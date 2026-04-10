@@ -1,4 +1,4 @@
-import type { TableSchema, DashboardSpec, ChatMessage, ChartType } from '../../types';
+import type { TableSchema, DashboardSpec, DashboardIntent, ChatMessage, ChartType } from '../../types';
 
 function describeSchema(schema: TableSchema): string {
   const lines = [
@@ -91,6 +91,100 @@ IMPORTANT:
 - The xColumn and yColumn must match column names in the SQL query's SELECT clause.
 - For histograms, the SQL should return raw values (the binning will be done by the chart renderer). Set xColumn to the numeric column and yColumn to "count".
 - For scatter plots, both xColumn and yColumn should be numeric aggregates.`;
+}
+
+/**
+ * Stage 1 prompt: ask the reasoning model to design chart intents (no SQL).
+ */
+export function buildIntentPrompt(
+  schema: TableSchema,
+  domainContext?: string,
+): string {
+  return `You are Billy, an expert data analyst. You are given a table's schema and statistics. Design an insightful dashboard — but do NOT write SQL. Instead, describe what each chart should show in plain English.
+
+## Data
+${describeSchema(schema)}
+
+${domainContext ? `## Domain Context\n${domainContext}\n` : ''}
+
+## Task
+Design 3-5 charts and 2-4 summary statistics. For each, describe the intent in plain English. A separate SQL specialist model will write the queries.
+
+## Heuristics
+- Numeric columns with high cardinality → measures (SUM, AVG, COUNT)
+- String/categorical columns with low cardinality (< 30 distinct) → dimensions (group by)
+- Date/timestamp columns → time dimensions (group by month or day)
+- ID columns (unique count ≈ row count) → exclude from default views
+- Prefer a mix of chart types for visual variety
+- Always include a time-series view if a date column exists
+
+## Chart Types
+- bar/barH: categorical dimension × numeric measure
+- line: time dimension × numeric measure (trends)
+- scatter: two numeric measures (correlation)
+- histogram: distribution of a single numeric column
+- area: time dimension × numeric measure (cumulative or stacked)
+- heatmap: two categorical dimensions × numeric measure
+
+## Output Format
+Return ONLY a JSON object (no markdown fences):
+{
+  "title": "string — dashboard title",
+  "description": "string — one sentence summary",
+  "charts": [
+    {
+      "id": "chart_1",
+      "type": "bar | barH | line | area | scatter | histogram | heatmap",
+      "title": "string — chart title",
+      "description": "string — what this chart reveals",
+      "intent": "string — plain English description of the query, e.g. 'total worldwide gross grouped by genre, sorted descending, top 10'",
+      "xColumn": "string — result column for x-axis",
+      "yColumn": "string — result column for y-axis",
+      "colorColumn": "string | null"
+    }
+  ],
+  "summaryStats": [
+    {
+      "label": "string — stat label",
+      "intent": "string — plain English, e.g. 'count of all rows'",
+      "format": "string | null — d3-format string like '$,.0f'"
+    }
+  ]
+}
+
+IMPORTANT:
+- Do NOT include any SQL. The "intent" field is plain English only.
+- xColumn and yColumn should describe the output column names the SQL should produce.
+- Be specific in intents: mention column names, aggregations, sort order, limits.`;
+}
+
+/**
+ * Stage 2 prompt: ask the SQL model to write one DuckDB query for an intent.
+ */
+export function buildSQLFromIntentSystemPrompt(schema: TableSchema): string {
+  const colDefs = schema.columns.map(col => {
+    const escaped = col.name.includes(' ') || col.name.includes('"')
+      ? `"${col.name.replace(/"/g, '""')}"`
+      : `"${col.name}"`;
+    return `  ${escaped} ${col.type}`;
+  });
+
+  return `Here is the database schema that the SQL query will run on:
+CREATE TABLE "${schema.tableName}" (
+${colDefs.join(',\n')}
+);
+
+The table has ${schema.rowCount.toLocaleString()} rows.
+
+Rules:
+- Write valid DuckDB SQL only. No explanation, no markdown fences.
+- Return ONLY the SQL query, nothing else.
+- Use double quotes for column names.
+- The query must be a complete, self-contained SELECT statement.`;
+}
+
+export function buildSQLFromIntentUserPrompt(intent: string): string {
+  return intent;
 }
 
 /** Estimate token count (~4 chars per token for English + JSON mix). */
@@ -190,6 +284,25 @@ export function validateDashboardSpec(spec: unknown): spec is DashboardSpec {
     if (typeof c.id !== 'string') return false;
     if (!VALID_CHART_TYPES.includes(c.type as ChartType)) return false;
     if (typeof c.sql !== 'string') return false;
+    if (typeof c.xColumn !== 'string') return false;
+    if (typeof c.yColumn !== 'string') return false;
+  }
+
+  return true;
+}
+
+export function validateIntentSpec(spec: unknown): spec is DashboardIntent {
+  if (!spec || typeof spec !== 'object') return false;
+  const s = spec as Record<string, unknown>;
+  if (typeof s.title !== 'string') return false;
+  if (!Array.isArray(s.charts)) return false;
+
+  for (const chart of s.charts) {
+    if (typeof chart !== 'object' || !chart) return false;
+    const c = chart as Record<string, unknown>;
+    if (typeof c.id !== 'string') return false;
+    if (!VALID_CHART_TYPES.includes(c.type as ChartType)) return false;
+    if (typeof c.intent !== 'string') return false;
     if (typeof c.xColumn !== 'string') return false;
     if (typeof c.yColumn !== 'string') return false;
   }
