@@ -89,9 +89,11 @@ function isRetryableError(error: Error): boolean {
   const msg = error.message.toLowerCase();
   return (
     msg.includes('invalid dashboard spec') ||
+    msg.includes('invalid dashboard intent') ||
     msg.includes('invalid refinement') ||
     msg.includes('failed to parse') ||
     msg.includes('json') ||
-    msg.includes('sql validation failed')
+    msg.includes('sql validation failed') ||
+    msg.includes('model chain produced')
   );
 }
