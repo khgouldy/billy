@@ -13,7 +13,7 @@ export function Header({ hasData, onSettings, onReset, fileName }: HeaderProps) 
           onClick={onReset}
           className="text-sm font-bold text-slate-900 hover:text-blue-600 transition-colors"
         >
-          Bench Coach
+          Billy
         </button>
         {fileName && (
           <span className="text-xs text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded">

@@ -10,6 +10,7 @@ interface StatValue {
   label: string;
   value: string;
   loading: boolean;
+  error?: string;
 }
 
 function formatValue(raw: unknown, format?: string): string {
@@ -48,8 +49,10 @@ export function SummaryStats({ stats }: SummaryStatsProps) {
           const row = res.rows[0];
           const val = row ? Object.values(row)[0] : null;
           results.push({ label: stat.label, value: formatValue(val, stat.format), loading: false });
-        } catch {
-          results.push({ label: stat.label, value: 'Error', loading: false });
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn(`[Billy] Stat "${stat.label}" failed:`, msg);
+          results.push({ label: stat.label, value: 'Error', loading: false, error: msg });
         }
       }
       if (!cancelled) setValues(results);
@@ -64,9 +67,9 @@ export function SummaryStats({ stats }: SummaryStatsProps) {
   return (
     <div className="flex gap-6 px-4 py-3 bg-white border border-slate-200 rounded-lg overflow-x-auto shadow-sm">
       {values.map((stat, i) => (
-        <div key={i} className="flex-shrink-0">
+        <div key={i} className="flex-shrink-0" title={stat.error || undefined}>
           <div className="text-xs text-slate-400 uppercase tracking-wider">{stat.label}</div>
-          <div className={`text-lg font-semibold text-slate-900 ${stat.loading ? 'animate-pulse' : ''}`}>
+          <div className={`text-lg font-semibold ${stat.error ? 'text-red-400 cursor-help' : 'text-slate-900'} ${stat.loading ? 'animate-pulse' : ''}`}>
             {stat.loading ? '...' : stat.value}
           </div>
         </div>

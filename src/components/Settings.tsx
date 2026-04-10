@@ -4,6 +4,7 @@ interface SettingsProps {
   settings: AppSettings;
   onUpdate: (updates: Partial<AppSettings>) => void;
   onClose: () => void;
+  saveError?: string | null;
 }
 
 const MODELS: Record<string, { label: string; value: string }[]> = {
@@ -34,7 +35,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   ollama: 'Ollama (Local)',
 };
 
-export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
+export function Settings({ settings, onUpdate, onClose, saveError }: SettingsProps) {
   const handleProviderChange = (provider: string) => {
     const defaultModel = MODELS[provider]?.[0]?.value || '';
     onUpdate({ llmProvider: provider as AppSettings['llmProvider'], model: defaultModel });
@@ -54,6 +55,12 @@ export function Settings({ settings, onUpdate, onClose }: SettingsProps) {
         </div>
 
         <div className="p-4 space-y-5">
+          {saveError && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-800">
+              {saveError}
+            </div>
+          )}
+
           {/* Provider */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">

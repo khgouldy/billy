@@ -135,54 +135,84 @@ async function computeSchema(
   tableName: string,
   fileName: string,
 ): Promise<TableSchema> {
-  const countResult = await executeQuery(
-    `SELECT COUNT(*) as cnt FROM "${tableName}"`,
-  );
+  // Run schema, count, and sample rows in parallel — 3 queries instead of N*4+3
+  const [countResult, schemaResult, sampleRowsResult] = await Promise.all([
+    executeQuery(`SELECT COUNT(*) as cnt FROM "${tableName}"`),
+    executeQuery(`DESCRIBE "${tableName}"`),
+    executeQuery(`SELECT * FROM "${tableName}" LIMIT 5`),
+  ]);
+
   const rowCount = Number(countResult.rows[0]?.cnt ?? 0);
 
-  const schemaResult = await executeQuery(`DESCRIBE "${tableName}"`);
+  // Build a single batched stats query for ALL columns using UNION ALL
+  const colMeta = schemaResult.rows.map((row) => ({
+    name: String(row.column_name),
+    type: String(row.column_type),
+    nullable: row.null !== 'NO',
+  }));
 
-  const columns: ColumnInfo[] = [];
-  for (const row of schemaResult.rows) {
-    const colName = String(row.column_name);
-    const colType = String(row.column_type);
-    const nullable = row.null !== 'NO';
+  const statsUnions = colMeta.map((col) => {
+    const escaped = col.name.replace(/"/g, '""');
+    return `SELECT
+      '${col.name.replace(/'/g, "''")}' as col_name,
+      COUNT(DISTINCT "${escaped}") as distinct_count,
+      COUNT(*) FILTER (WHERE "${escaped}" IS NULL) as null_count,
+      MIN("${escaped}")::VARCHAR as min_val,
+      MAX("${escaped}")::VARCHAR as max_val
+    FROM "${tableName}"`;
+  });
 
-    const statsResult = await executeQuery(`
-      SELECT
-        COUNT(DISTINCT "${colName}") as distinct_count,
-        COUNT(*) FILTER (WHERE "${colName}" IS NULL) as null_count,
-        MIN("${colName}")::VARCHAR as min_val,
-        MAX("${colName}")::VARCHAR as max_val
-      FROM "${tableName}"
-    `);
-    const stats = statsResult.rows[0] || {};
+  const sampleUnions = colMeta.map((col) => {
+    const escaped = col.name.replace(/"/g, '""');
+    return `SELECT
+      '${col.name.replace(/'/g, "''")}' as col_name,
+      "${escaped}"::VARCHAR as val
+    FROM (
+      SELECT DISTINCT "${escaped}" FROM "${tableName}"
+      WHERE "${escaped}" IS NOT NULL LIMIT 5
+    )`;
+  });
 
+  // Two batched queries: one for stats, one for sample values
+  const [allStats, allSamples] = await Promise.all([
+    colMeta.length > 0
+      ? executeQuery(statsUnions.join('\nUNION ALL\n'))
+      : Promise.resolve({ columns: [], rows: [], rowCount: 0, executionTime: 0 }),
+    colMeta.length > 0
+      ? executeQuery(sampleUnions.join('\nUNION ALL\n'))
+      : Promise.resolve({ columns: [], rows: [], rowCount: 0, executionTime: 0 }),
+  ]);
+
+  // Index results by column name for O(1) lookups
+  const statsMap = new Map<string, Record<string, unknown>>();
+  for (const row of allStats.rows) {
+    statsMap.set(String(row.col_name), row);
+  }
+
+  const samplesMap = new Map<string, unknown[]>();
+  for (const row of allSamples.rows) {
+    const name = String(row.col_name);
+    if (!samplesMap.has(name)) samplesMap.set(name, []);
+    samplesMap.get(name)!.push(row.val);
+  }
+
+  const columns: ColumnInfo[] = colMeta.map((col) => {
+    const stats = statsMap.get(col.name) || {};
     const distinctCount = Number(stats.distinct_count ?? 0);
     const nullCount = Number(stats.null_count ?? 0);
 
-    const sampleResult = await executeQuery(
-      `SELECT DISTINCT "${colName}"::VARCHAR as val FROM "${tableName}" WHERE "${colName}" IS NOT NULL LIMIT 5`,
-    );
-    const sampleValues = sampleResult.rows.map((r) => r.val);
-
-    columns.push({
-      name: colName,
-      type: colType,
-      nullable,
+    return {
+      name: col.name,
+      type: col.type,
+      nullable: col.nullable,
       distinctCount,
       nullCount,
-      nullPercent:
-        rowCount > 0 ? Math.round((nullCount / rowCount) * 100) : 0,
-      sampleValues,
+      nullPercent: rowCount > 0 ? Math.round((nullCount / rowCount) * 100) : 0,
+      sampleValues: samplesMap.get(col.name) || [],
       min: stats.min_val ?? null,
       max: stats.max_val ?? null,
-    });
-  }
-
-  const sampleRowsResult = await executeQuery(
-    `SELECT * FROM "${tableName}" LIMIT 5`,
-  );
+    };
+  });
 
   return {
     tableName,

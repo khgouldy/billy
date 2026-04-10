@@ -5,7 +5,7 @@ import { ingestFile, ingestURL, detectDataQualityIssues } from './services/duckd
 import { AnthropicProvider } from './services/llm/anthropic';
 import { OpenAIProvider } from './services/llm/openai';
 import { OllamaProvider } from './services/llm/ollama';
-import { setLLMProvider, getLLMProvider } from './services/llm/provider';
+import { setLLMProvider, getLLMProvider, withSelfCorrection } from './services/llm/provider';
 import type { ChatMessage } from './types';
 import { Landing } from './components/Landing';
 import { Header } from './components/Header';
@@ -22,17 +22,17 @@ function generateId(): string {
 
 export default function App() {
   const { state, actions } = useAppState();
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, saveError } = useSettings();
 
   // Initialize LLM provider when settings change
   useEffect(() => {
     if (settings.llmProvider === 'ollama') {
-      setLLMProvider(new OllamaProvider(settings.model, settings.ollamaUrl));
+      setLLMProvider(withSelfCorrection(new OllamaProvider(settings.model, settings.ollamaUrl)));
     } else if (settings.apiKey) {
       if (settings.llmProvider === 'openai') {
-        setLLMProvider(new OpenAIProvider(settings.apiKey, settings.model));
+        setLLMProvider(withSelfCorrection(new OpenAIProvider(settings.apiKey, settings.model)));
       } else {
-        setLLMProvider(new AnthropicProvider(settings.apiKey, settings.model));
+        setLLMProvider(withSelfCorrection(new AnthropicProvider(settings.apiKey, settings.model)));
       }
     }
   }, [settings.apiKey, settings.model, settings.llmProvider, settings.ollamaUrl]);
@@ -182,7 +182,7 @@ export default function App() {
         <Header hasData={false} onSettings={() => actions.toggleSettings()} onReset={() => actions.reset()} />
         <Landing onFileSelect={handleFileSelect} onSampleData={handleSampleData} />
         {state.settingsOpen && (
-          <Settings settings={settings} onUpdate={updateSettings} onClose={() => actions.toggleSettings()} />
+          <Settings settings={settings} onUpdate={updateSettings} onClose={() => actions.toggleSettings()} saveError={saveError} />
         )}
         {state.error && (
           <ErrorToast message={state.error} onDismiss={() => actions.setError(null)} />
@@ -265,7 +265,7 @@ export default function App() {
       </div>
 
       {state.settingsOpen && (
-        <Settings settings={settings} onUpdate={updateSettings} onClose={() => actions.toggleSettings()} />
+        <Settings settings={settings} onUpdate={updateSettings} onClose={() => actions.toggleSettings()} saveError={saveError} />
       )}
       {state.error && (
         <ErrorToast message={state.error} onDismiss={() => actions.setError(null)} />

@@ -30,7 +30,7 @@ export function buildGenerateDashboardPrompt(
   schema: TableSchema,
   domainContext?: string,
 ): string {
-  return `You are Bench Coach, an expert data analyst and dashboard builder. You are given a data table's schema and statistics. Your job is to generate an instant, insightful dashboard specification.
+  return `You are Billy, an expert data analyst and dashboard builder. You are given a data table's schema and statistics. Your job is to generate an instant, insightful dashboard specification.
 
 ## Data
 ${describeSchema(schema)}
@@ -93,6 +93,37 @@ IMPORTANT:
 - For scatter plots, both xColumn and yColumn should be numeric aggregates.`;
 }
 
+/** Estimate token count (~4 chars per token for English + JSON mix). */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Trim chat history to fit within a token budget, keeping the most recent
+ * messages. Always preserves at least the last message.
+ */
+function trimHistory(messages: ChatMessage[], maxTokens: number): string {
+  const formatted = messages.map(m =>
+    `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`
+  );
+
+  // Work backwards from newest, accumulating until we hit the budget
+  const kept: string[] = [];
+  let tokens = 0;
+  for (let i = formatted.length - 1; i >= 0; i--) {
+    const msgTokens = estimateTokens(formatted[i]);
+    if (tokens + msgTokens > maxTokens && kept.length > 0) break;
+    kept.unshift(formatted[i]);
+    tokens += msgTokens;
+  }
+
+  return kept.join('\n');
+}
+
+// Reserve ~2000 tokens for history (out of typical 4K-8K model budgets,
+// after the schema, spec, and instructions consume the rest)
+const HISTORY_TOKEN_BUDGET = 2000;
+
 export function buildRefinementPrompt(
   currentSpec: DashboardSpec,
   userMessage: string,
@@ -100,11 +131,9 @@ export function buildRefinementPrompt(
   history: ChatMessage[],
   domainContext?: string,
 ): string {
-  const recentHistory = history.slice(-10).map(m =>
-    `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`
-  ).join('\n');
+  const recentHistory = trimHistory(history, HISTORY_TOKEN_BUDGET);
 
-  return `You are Bench Coach, an expert data analyst helping a user refine their dashboard. The user has an existing dashboard and wants to modify it.
+  return `You are Billy, an expert data analyst helping a user refine their dashboard. The user has an existing dashboard and wants to modify it.
 
 ## Data Schema
 ${describeSchema(schema)}
@@ -166,4 +195,44 @@ export function validateDashboardSpec(spec: unknown): spec is DashboardSpec {
   }
 
   return true;
+}
+
+/**
+ * Dry-run each chart's SQL with LIMIT 0 to catch syntax errors, missing
+ * columns, and type mismatches before the dashboard renders.
+ * Returns an array of error messages (empty = all valid).
+ */
+export async function validateSpecSQL(
+  spec: DashboardSpec,
+  runQuery: (sql: string) => Promise<unknown>,
+): Promise<string[]> {
+  const errors: string[] = [];
+
+  const checks = spec.charts.map(async (chart) => {
+    try {
+      await runQuery(`SELECT * FROM (${chart.sql}) _validate LIMIT 0`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`Chart "${chart.title}": ${msg}`);
+    }
+  });
+
+  // Also validate summary stat SQL
+  if (spec.summaryStats) {
+    for (const stat of spec.summaryStats) {
+      checks.push(
+        (async () => {
+          try {
+            await runQuery(`SELECT * FROM (${stat.sql}) _validate LIMIT 0`);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            errors.push(`Stat "${stat.label}": ${msg}`);
+          }
+        })(),
+      );
+    }
+  }
+
+  await Promise.all(checks);
+  return errors;
 }

@@ -65,7 +65,7 @@ export function Landing({ onFileSelect, onSampleData }: LandingProps) {
         {/* Header */}
         <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold text-slate-900 tracking-tight">
-            Bench Coach
+            Billy
           </h1>
           <p className="text-slate-500 text-lg max-w-md mx-auto">
             Drop a file. Get an interactive, cross-filtered dashboard. Refine it by conversation.

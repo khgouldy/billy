@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { AppSettings } from '../types';
 
-const STORAGE_KEY = 'benchcoach_settings';
+const STORAGE_KEY = 'billy_settings';
 
 const defaults: AppSettings = {
   llmProvider: 'anthropic',
@@ -12,36 +12,44 @@ const defaults: AppSettings = {
   domainContext: '',
 };
 
-function loadSettings(): AppSettings {
+function loadSettings(): { settings: AppSettings; error: string | null } {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return { ...defaults, ...JSON.parse(stored) };
+      return { settings: { ...defaults, ...JSON.parse(stored) }, error: null };
     }
-  } catch {
-    // ignore
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[Billy] Failed to load settings:', msg);
+    return { settings: defaults, error: `Could not load saved settings: ${msg}` };
   }
-  return defaults;
+  return { settings: defaults, error: null };
 }
 
-function saveSettings(settings: AppSettings): void {
+function saveSettings(settings: AppSettings): string | null {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    // ignore
+    return null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn('[Billy] Failed to save settings:', msg);
+    return `Settings could not be saved: ${msg}`;
   }
 }
 
 export function useSettings() {
-  const [settings, setSettingsState] = useState<AppSettings>(loadSettings);
+  const [initial] = useState(loadSettings);
+  const [settings, setSettingsState] = useState<AppSettings>(initial.settings);
+  const [saveError, setSaveError] = useState<string | null>(initial.error);
 
   const updateSettings = useCallback((updates: Partial<AppSettings>) => {
     setSettingsState(prev => {
       const next = { ...prev, ...updates };
-      saveSettings(next);
+      const error = saveSettings(next);
+      setSaveError(error);
       return next;
     });
   }, []);
 
-  return { settings, updateSettings };
+  return { settings, updateSettings, saveError };
 }

@@ -26,7 +26,7 @@ function ChartCard({ chart, tableName, crossFilter }: { chart: ChartSpec; tableN
     (async () => {
       try {
         // Create a temp view from the chart's SQL so Mosaic can query it
-        const viewName = `_benchcoach_${chart.id}`;
+        const viewName = `_billy_${chart.id}`;
         await coordinator().query(
           `CREATE OR REPLACE TEMP VIEW "${viewName}" AS ${chart.sql}`,
           { type: 'exec' }
